@@ -10,7 +10,7 @@ Requires MetaMask connected to GenLayer Studionet.
 
 ## What It Does
 
-Freelance work verification usually depends on one party's word against another. This app removes that single point of trust: multiple AI validators independently fetch the submitted evidence URL, evaluate whether it satisfies the task description, and must agree before the contract changes state.
+Freelance work verification usually depends on one party's word against another. This app removes that single point of trust: multiple AI validators independently fetch the submitted evidence URL, evaluate whether it satisfies the task description and must agree before the contract changes state.
 
 ## How It Works
 
@@ -46,9 +46,9 @@ Explorer: https://explorer-studio.genlayer.com/address/0xD8d1c944eCE6f8E9381557a
 1. Open the [live demo](https://a200326.github.io/freelance-task-validator-app/).
 2. Connect MetaMask (Studionet).
 3. Create a task with your own address as the worker (so you can act as both roles for testing).
-4. Submit an evidence URL — for example, a raw GitHub Gist link to a code file.
+4. Submit an evidence URL. for example, a raw GitHub Gist link to a code file.
 5. Click "Verify & Resolve" and confirm the transaction. Wait for AI consensus (may take up to a minute).
-6. Observe the result: `approved` or `rejected`, or `fetch_failed` if the URL was unreachable (state remains unchanged, retry anytime).
+6. Observe the result: `approved` or `rejected` or `fetch_failed` if the URL was unreachable (state remains unchanged, retry anytime).
 7. If approved, try "Raise Dispute" to see the arbitration flow resolve to `resolved_worker_wins` or `resolved_client_wins`.
 
 ## Files
