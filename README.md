@@ -22,6 +22,14 @@ Freelance work verification usually depends on one party's word against another.
 
 Every state transition is enforced on-chain: only the registered worker can submit evidence, only the client can trigger verification or disputes.
 
+## Evidence Integrity
+
+Two integrity guarantees were added based on steward feedback:
+
+**Content hash binding.** When evidence is submitted, validators independently fetch the URL and must agree (via `strict_eq`) on its SHA-256 hash before the submission is accepted. This hash is permanently committed on-chain (`get_evidence_hash`). At both verification and arbitration time, the contract refetches the evidence and recomputes its hash — if it no longer matches, the task returns `evidence_changed` and state is left unchanged, rather than letting arbitration judge content that was altered after submission.
+
+**Exact bounded verdicts.** AI responses are parsed with strict exact-match logic, not substring search. A response like "this should NOT be approved" can never be misread as an "approved" verdict, since only a response that is precisely the single token `approved` or `rejected` (after trimming whitespace/punctuation) is accepted. Anything else returns `unparseable` and leaves state unchanged for a retry.
+
 ## Tech Stack
 
 - **Smart contract**: GenLayer Intelligent Contract (Python), using `gl.eq_principle.strict_eq` for deterministic AI consensus and `gl.nondet.web.request` for live evidence fetching.
@@ -31,7 +39,7 @@ Every state transition is enforced on-chain: only the registered worker can subm
 ## Contract
 
 Network: GenLayer Studionet
-Contract Address: `0xD8d1c944eCE6f8E9381557aCc750De4a733946eb`
+Contract Address: `0xe8eE99A5991400bB6A94E43b889EC199F204F1ff`
 Explorer: https://explorer-studio.genlayer.com/address/0xD8d1c944eCE6f8E9381557aCc750De4a733946eb
 
 ## Trust Model & Limitations
