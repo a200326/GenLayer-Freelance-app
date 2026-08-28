@@ -40,7 +40,7 @@ Two integrity guarantees were added based on steward feedback:
 
 Network: GenLayer Studionet
 Contract Address: `0xe8eE99A5991400bB6A94E43b889EC199F204F1ff`
-Explorer: https://explorer-studio.genlayer.com/address/0xD8d1c944eCE6f8E9381557aCc750De4a733946eb
+Explorer: https://explorer-studio.genlayer.com/address/0xe8eE99A5991400bB6A94E43b889EC199F204F1ff
 
 ## Trust Model & Limitations
 
