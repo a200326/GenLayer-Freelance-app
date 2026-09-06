@@ -1,6 +1,6 @@
 # Freelance Task Validator — GenLayer Project
 
-A full-stack dApp for trustless freelance work verification, powered by GenLayer's AI consensus.
+A full-stack dApp for trustless freelance work verification with escrowed payment settlement, powered by GenLayer's AI consensus.
 
 ## Live Demo
 
@@ -10,55 +10,63 @@ Requires MetaMask connected to GenLayer Studionet.
 
 ## What It Does
 
-Freelance work verification usually depends on one party's word against another. This app removes that single point of trust: multiple AI validators independently fetch the submitted evidence URL, evaluate whether it satisfies the task description and must agree before the contract changes state.
+Freelance work verification usually depends on one party's word against another, and payment usually depends on trusting whoever holds the funds. This app removes both single points of trust: the payment is escrowed in the contract itself, multiple AI validators independently verify the submitted work, and the consensus outcome directly and irreversibly determines who the escrowed funds belong to.
 
 ## How It Works
 
-1. **Create Task** — a client defines a task and names a worker's wallet address.
-2. **Submit Evidence** — the worker submits a URL pointing to their completed work (e.g. a GitHub Gist, a live demo, a document).
-3. **Verify & Resolve** — the client triggers verification. GenLayer validators independently fetch the evidence and reach consensus on `approved` or `rejected`.
-4. **Raise Dispute** — if the client disagrees with an approval, they can dispute it.
-5. **Resolve Dispute** — a second round of AI consensus acts as arbitration, deciding `worker_wins` or `client_wins`.
+1. **Create Task** — a client defines a task, names a worker's wallet address, and attaches a GEN payment that is held in escrow by the contract.
+2. **Accept Task** — the worker explicitly confirms they accept the escrowed amount before doing any work. They can check the amount first and simply decline (or the client can cancel) if it doesn't match what was agreed off-chain.
+3. **Submit Evidence** — the worker submits a URL pointing to their completed work. The evidence is fetched immediately and its content hash is committed on-chain by validator consensus.
+4. **Verify & Resolve** — either the client or the worker can trigger verification. GenLayer validators independently refetch the evidence, check it against the committed hash, and reach consensus on `approved` or `rejected`.
+5. **Claim Payment / Raise Dispute** — if approved, either party can claim payment for the worker, or the client can raise a dispute instead.
+6. **Resolve Dispute** — either party can trigger arbitration. A second round of AI consensus decides `worker_wins` or `client_wins`, crediting the escrow accordingly.
+7. **Withdraw** — the party owed funds withdraws their credited balance at any time.
 
-Every state transition is enforced on-chain: only the registered worker can submit evidence, only the client can trigger verification or disputes.
+Every state transition is enforced on-chain: only the registered worker can accept the task or submit evidence, only the client can cancel or raise a dispute, and either party can advance a task that is stuck waiting on verification or arbitration.
 
-## Evidence Integrity
+## Enforceable Settlement
 
-Two integrity guarantees were added based on steward feedback:
+This milestone directly addresses steward feedback: *"let either party advance stalled tasks and connect the consensus outcome to an enforceable settlement rather than status labels alone."*
 
-**Content hash binding.** When evidence is submitted, validators independently fetch the URL and must agree (via `strict_eq`) on its SHA-256 hash before the submission is accepted. This hash is permanently committed on-chain (`get_evidence_hash`). At both verification and arbitration time, the contract refetches the evidence and recomputes its hash — if it no longer matches, the task returns `evidence_changed` and state is left unchanged, rather than letting arbitration judge content that was altered after submission.
+**Either party can advance stalled tasks.** `verify_and_resolve` and `resolve_dispute` can now be called by either the client or the worker, not just the client. This matters most when a previous attempt returned `fetch_failed`, `evidence_changed`, or `unparseable` and needs a retry — neither party is stuck waiting on the other.
 
-**Exact bounded verdicts.** AI responses are parsed with strict exact-match logic, not substring search. A response like "this should NOT be approved" can never be misread as an "approved" verdict, since only a response that is precisely the single token `approved` or `rejected` (after trimming whitespace/punctuation) is accepted. Anything else returns `unparseable` and leaves state unchanged for a retry.
+**Consensus outcome is connected to real settlement, not just a label.** Payment is escrowed as real GEN at task creation (`@gl.public.write.payable`). The AI's verdict does not just set a status string — it determines who is credited a withdrawable balance (`pending_withdrawals`), and that credit is exactly the escrowed amount, enforced by the contract itself rather than trusted to either party.
 
-## Tech Stack
+**Pull-payment pattern.** Rather than the contract pushing a payment immediately (which can fail unpredictably and lock up state), the recipient calls `withdraw()` to claim their credited balance. This is a widely recommended security pattern for smart contracts (avoiding failed-push-payment lockups), and it also means the settlement *decision* is always safely and immediately finalized on-chain regardless of whether the actual token transfer can complete in the current environment (see Trust Model below).
 
-- **Smart contract**: GenLayer Intelligent Contract (Python), using `gl.eq_principle.strict_eq` for deterministic AI consensus and `gl.nondet.web.request` for live evidence fetching.
-- **Frontend**: Single-file static HTML/JS, no build step. Uses [genlayer-js](https://www.npmjs.com/package/genlayer-js) loaded directly from esm.sh, connected via MetaMask.
-- **Hosting**: GitHub Pages (fully static, no backend server).
+## New in This Version
 
-## Contract
-
-Network: GenLayer Studionet
-Contract Address: `0xe8eE99A5991400bB6A94E43b889EC199F204F1ff`
-
-Explorer: https://explorer-studio.genlayer.com/address/0xe8eE99A5991400bB6A94E43b889EC199F204F1ff
+- `create_task` is now payable and requires a non-zero escrow payment.
+- `accept_task` — worker must explicitly accept the escrowed amount before submitting work.
+- `cancel_task` — client can cancel and reclaim escrow before evidence is submitted.
+- `claim_payment` — finalizes an approved, undisputed task by crediting the worker.
+- `withdraw` — recipient claims their credited balance.
+- `verify_and_resolve` and `resolve_dispute` can now be called by either the client or the worker.
+- `get_amount` and `get_pending_withdrawal` — structured getters for escrow and settlement transparency.
 
 ## Trust Model & Limitations
 
 - Evidence is trusted from a single URL provided by the worker. For stronger guarantees, use immutable sources (e.g. a pinned commit's raw file URL) rather than a branch URL that can change after submission.
 - Evidence longer than 3000 characters is truncated; only the first 3000 characters are evaluated (exposed on-chain via `get_max_evidence_chars`).
-- HTTP status codes are validated where available; explicit content-type validation was attempted but dropped after testing showed it was unreliable on the current GenVM runtime and caused false negatives. Non-text content is instead caught by the UTF-8 decode step, which fails safely into `fetch_failed`.
-- On any fetch, status, or decode failure, task state is left unchanged (not incorrectly rejected) so the client can retry once the evidence is reachable.
+- On any fetch, status, integrity, or verdict-parsing failure, task state is left unchanged so either party can retry.
+- **`withdraw()` requires the EVM/ghost-contract layer to deliver value to a plain wallet address.** This is available on live GenLayer networks (e.g. Bradbury) but not in the Studio sandbox, which has no EVM layer. All settlement *decisions* (escrow, crediting, entitlement) are fully testable and were tested end-to-end on Studio; only the final external token transfer requires a live network. The contract uses the documented pattern for this (`@gl.evm.contract_interface` wrapper around the recipient address) so `withdraw()` is ready to execute correctly once deployed to a network with the EVM layer.
+
+## Contract
+
+Network: GenLayer Studionet
+Contract Address: `0xF64c4408dc72Fd7d4bc9bDf40435FDc83fe36EB9`
+
+Explorer: https://explorer-studio.genlayer.com/address/0xF64c4408dc72Fd7d4bc9bDf40435FDc83fe36EB9
 
 ## Testing Instructions
 
 1. Open the [live demo](https://a200326.github.io/freelance-task-validator-app/).
 2. Connect MetaMask (Studionet).
-3. Create a task with your own address as the worker (so you can act as both roles for testing).
-4. Submit an evidence URL. for example, a raw GitHub Gist link to a code file.
-5. Click "Verify & Resolve" and confirm the transaction. Wait for AI consensus (may take up to a minute).
-6. Observe the result: `approved` or `rejected` or `fetch_failed` if the URL was unreachable (state remains unchanged, retry anytime).
-7. If approved, try "Raise Dispute" to see the arbitration flow resolve to `resolved_worker_wins` or `resolved_client_wins`.
+3. Create a task with your own address as the worker (so you can act as both roles for testing), attaching a GEN amount.
+4. Accept the task (as worker), then submit an evidence URL — for example, a raw GitHub Gist link to a code file.
+5. Click "Verify & Resolve" and confirm the transaction. Wait for AI consensus.
+6. If approved, click "Claim Payment", then check your withdrawable balance and call "Withdraw".
+7. To test arbitration, raise a dispute on an approved task, or verify a task with evidence AI is likely to reject, then resolve the dispute.
 
 ## Files
 
